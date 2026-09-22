@@ -52,11 +52,16 @@ workaround.
       IdentityFile ~/.ssh/id_ed25519_ds214play
   ```
   → connect with just `ssh ds214play`.
-- `sudo` on the NAS still requires an interactive password — it is **not** passwordless.
-  Any root-level change has to be run by hand in a real terminal session (password never
-  typed to Claude), not scripted non-interactively.
-- **TODO**: disable SSH password authentication entirely now that the key works (leave
-  key auth on). Not done yet.
+- `sudo` on the NAS still requires an interactive password — it is **not** passwordless,
+  and deliberately stays that way (key-based SSH login ≠ passwordless root; two separate
+  mechanisms). Any root-level change has to be run by hand in a real terminal session
+  (password never typed to Claude), not scripted non-interactively.
+- **Password authentication is disabled** — `PasswordAuthentication no` in
+  `/etc/ssh/sshd_config` (backed up alongside as `sshd_config.bak`). No drop-in
+  `sshd_config.d/` support on this DSM build, unlike a normal Linux box — had to edit the
+  main file directly. Applied via DSM's own SSH service toggle (Control Panel → Terminal &
+  SNMP → off → on) rather than a raw `systemctl restart`, and verified from a second
+  terminal session before closing the first. Key-only login confirmed working.
 
 ## VPN (PIA) — for safe downloading
 
@@ -168,20 +173,55 @@ Built our own lightweight Bazarr-equivalent instead:
    email instead of your OpenSubtitles username* — that's a distinct, explicitly-flagged
    error case from the API itself.
 
+## Done this session (beyond storage/SSH/VPN above)
+
+- **Download Station**: destination = `Media/Downloads/incomplete` as default target;
+  Movies/TV picked manually per download (no auto-sort exists without *arr). BT port
+  already fixed at `16881` (wasn't random, contrary to an earlier assumption — nothing to
+  change there). RSS auto-download not set up — optional, not done.
+- **Plex libraries**: `Filmer` → `/volume1/Media/Movies`, `TV-serier` → `/volume1/Media/TV`.
+  Hit a real gotcha getting there — see below.
+- **Subtitle script**: confirmed working against real downloaded movies, not just the
+  synthetic test file. See the Subtitles section above for the run log.
+- **SSH password auth disabled** — see SSH access section above.
+
+### Gotcha: Plex couldn't see the Media folder despite `drwxrwxrwx`
+
+Plex's scanner logged `Permission denied` on `/volume1/Media/Movies` even though `ls -la`
+showed wide-open `777` permissions. Cause: Synology's ACL system (the `+` suffix on the
+permission string) overrides the classic Unix bits, and the `Media` shared folder's ACL
+only granted access to the `administrators` group — not to `PlexMediaServer`, the
+package's own system account. Checked with:
+
+```sh
+/usr/syno/bin/synoacltool -get /volume1/Media
+```
+
+Fix: **Control Panel → Shared Folder → Media → Edit → Permission** tab → grant
+`PlexMediaServer` (or `everyone`/`users` more broadly) at least Read access. This is a
+DSM-wide gotcha, not Plex-specific — any package running as its own system account can hit
+this on a shared folder that was locked to `administrators` only.
+
 ## Open TODOs
 
-1. Wire up Download Station: set the two destination paths above in its settings
-   (incomplete-downloads temp folder + confirm Movies/TV as picker destinations), consider
-   a fixed BT port, optionally set up RSS auto-download feeds per show/movie.
-2. Configure Plex: add `Media/Movies` and `Media/TV` as library folders, verify hardware
-   transcoding (CE5335 supports it), decide on remote access.
-3. Once real media exists: watch the first few Task Scheduler runs of the subtitle script
-   (`~ryddmo/scripts/subtitles/subtitle_fetch.log`) to confirm it behaves the same against
-   real files as it did in testing.
-4. Harden SSH: disable password auth now that key-based login works.
-5. General DSM hardening not yet revisited after the reinstall: 2FA on the admin account,
-   confirm no stray default/blank accounts, check whether DSM/QuickConnect is exposed
-   externally (should not be, if only used on LAN/VPN).
+1. **Security, not yet done:**
+   - 2FA on the `ryddmo` DSM account
+   - Check whether QuickConnect (or any other form of external/internet exposure) is
+     enabled — should not be, everything here is meant to be LAN/VPN-only
+   - Confirm no stray default/blank accounts survived the reinstall
+2. **Backup — currently nonexistent.** The SHR mirror only protects against *one drive
+   dying*. It does **not** protect against accidental deletion, ransomware, fire/theft, or
+   a write error that corrupts both disks at once. Worth a real conversation if anything
+   irreplaceable (photos, documents) ever lands on this box — downloaded media is a much
+   lower-stakes case (re-downloadable) and doesn't need the same urgency.
+3. **Plex hardware transcoding** — unresolved. User has Plex Pass, but whether the
+   CE5335 chip is actually on Plex's supported hardware-transcode list was never
+   confirmed (Settings → Transcoder → "Use hardware acceleration" — check if the box is
+   actually usable or greyed out). Don't assume either way without checking.
+4. **Remote access to Plex** — never decided. Off for now (LAN-only), revisit if wanted.
+5. Optional, low-priority: RSS auto-download in Download Station; PIA port-forwarding for
+   faster BT speeds (would need a small script against PIA's port-forward API, since DSM's
+   native VPN client doesn't request one automatically).
 
 ## Reference: what NOT to expect from this box
 
