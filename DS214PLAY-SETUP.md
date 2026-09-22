@@ -104,22 +104,80 @@ drop.
 
 ## Media
 
+### Folder structure
+
+Shared folder `Media` on Volym 1, with:
+
+```
+Media/
+├── Movies/
+└── TV/
+```
+
+Download Station's **"Temporary folder for incomplete downloads"** is set to a folder
+*outside* this tree (so Plex never scans a half-downloaded torrent). Per-download
+destination is picked manually as Movies or TV when adding a torrent — no *arr-style
+auto-sorting exists here, so this is a deliberate manual step each time.
+
 - **Plex Media Server** — already installed (found pre-existing on this install). Not yet
   configured (library paths, hardware transcoding, remote access).
-- **Download Station** — installed, not yet configured (download folder, RSS
-  auto-download, BT port).
+- **Download Station** — installed, not yet configured (destination folders above still
+  need to be wired up in its settings, RSS auto-download not yet set up, BT port not yet
+  fixed).
 - **No Jellyfin, no *arr stack (Radarr/Sonarr/Prowlarr/Bazarr)** — ruled out by lack of
   Docker + weak ARM~~x86 32-bit hardware. This machine cannot replicate that setup.
-- **Subtitles**: no Bazarr-equivalent exists natively. Plan is client-side auto-fetch
-  (Infuse / Kodi) rather than anything server-side.
+
+### Subtitles — custom script (OpenSubtitles.com API)
+
+Plex's built-in subtitle agent (OpenSubtitles.org) **was removed by Plex** in server
+1.40.0.7998 (Feb 2024) — confirmed gone on this install (1.41.5). Sub-Zero (the usual
+third-party replacement) is also effectively deprecated. So there is no "click a checkbox
+in Plex" option anymore, for anyone, on any NAS — not a DS214play limitation specifically.
+
+Built our own lightweight Bazarr-equivalent instead:
+
+- **Script**: `~ryddmo/scripts/subtitles/subtitle_fetch.py` on the NAS. Pure Python 3
+  standard library only (no pip available on this DSM's Python3) — shells out to `curl`
+  for all HTTP calls.
+- **Config**: `~ryddmo/scripts/subtitles/config.json` (git-ignored equivalent — lives only
+  on the NAS, never in this repo). Holds an OpenSubtitles.com API key + account
+  username/password + target languages (`sv`, `en`).
+- **What it does**: walks `Media/Movies` and `Media/TV`, finds video files with no matching
+  `.srt`, computes the OpenSubtitles moviehash (falls back to filename search), downloads
+  the best match, saves it as `<basename>.<lang>.srt` next to the video. Works with any
+  player, including Plex, since the file just sits alongside the video.
+- **Scheduled**: DSM Task Scheduler → **Schemalagd uppgift** (Scheduled Task, *not*
+  "Utlöst uppgift"/Triggered Task — that one only offers Boot-up/Shutdown, no recurring
+  calendar schedule) → user-defined script → user `ryddmo` (no root needed) → daily 04:00 →
+  runs `python3 /var/services/homes/ryddmo/scripts/subtitles/subtitle_fetch.py`.
+- **Verified end-to-end**: tested against a dummy `Inception.2010.1080p.mkv` — found a
+  match, logged in, downloaded a real, correctly-formatted `.srt`. Confirmed against the
+  real folder structure too (0 files found, since no media was in place yet at the time).
+
+**Two gotchas that cost time, worth remembering:**
+1. OpenSubtitles' API gateway (Kong) hard-rejects certain `User-Agent` header shapes with
+   an opaque `kong-user-agent-block` error, *before* even checking credentials. Fix: the
+   header must look like `Name vX.Y.Z` — no hyphens, name not starting lowercase. (A UA of
+   `ds214play-subtitle-fetch v1.0` was blocked; `DS214playApp v1.0.0` was not.) Not a
+   TLS/client-fingerprint thing — reproduced identically with both `curl` and Python's
+   `urllib`.
+2. Rate limit is **1 request/second**, and the free-tier daily download quota is small
+   (~20/day was seen). The script sleeps ~1.1s after every API call. A large library will
+   take several days to fully backfill subtitles — expected, not a bug.
+3. Login errors are picky: "invalid username/password" can actually mean *you typed your
+   email instead of your OpenSubtitles username* — that's a distinct, explicitly-flagged
+   error case from the API itself.
 
 ## Open TODOs
 
-1. Configure Download Station: download folder → media library path, consider a fixed BT
-   port, optionally set up RSS auto-download feeds per show/movie.
-2. Configure Plex: add library folders, verify hardware transcoding (CE5335 supports it),
-   decide on remote access.
-3. Decide + set up subtitle approach (client-side, e.g. Infuse/Kodi).
+1. Wire up Download Station: set the two destination paths above in its settings
+   (incomplete-downloads temp folder + confirm Movies/TV as picker destinations), consider
+   a fixed BT port, optionally set up RSS auto-download feeds per show/movie.
+2. Configure Plex: add `Media/Movies` and `Media/TV` as library folders, verify hardware
+   transcoding (CE5335 supports it), decide on remote access.
+3. Once real media exists: watch the first few Task Scheduler runs of the subtitle script
+   (`~ryddmo/scripts/subtitles/subtitle_fetch.log`) to confirm it behaves the same against
+   real files as it did in testing.
 4. Harden SSH: disable password auth now that key-based login works.
 5. General DSM hardening not yet revisited after the reinstall: 2FA on the admin account,
    confirm no stray default/blank accounts, check whether DSM/QuickConnect is exposed
