@@ -204,8 +204,9 @@ this on a shared folder that was locked to `administrators` only.
 
 ## Open TODOs
 
-1. **Security, not yet done:**
-   - 2FA on the `ryddmo` DSM account
+1. **Security:**
+   - ~~2FA on the `ryddmo` DSM account~~ — **done** (authenticator app enrolled via
+     Personligt → 2-faktorsautentisering).
    - Check whether QuickConnect (or any other form of external/internet exposure) is
      enabled — should not be, everything here is meant to be LAN/VPN-only
    - Confirm no stray default/blank accounts survived the reinstall
