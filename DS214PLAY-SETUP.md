@@ -215,10 +215,21 @@ this on a shared folder that was locked to `administrators` only.
    a write error that corrupts both disks at once. Worth a real conversation if anything
    irreplaceable (photos, documents) ever lands on this box — downloaded media is a much
    lower-stakes case (re-downloadable) and doesn't need the same urgency.
-3. **Plex hardware transcoding** — unresolved. User has Plex Pass, but whether the
-   CE5335 chip is actually on Plex's supported hardware-transcode list was never
-   confirmed (Settings → Transcoder → "Use hardware acceleration" — check if the box is
-   actually usable or greyed out). Don't assume either way without checking.
+3. **Plex hardware transcoding — resolved: not possible. Confirmed on-device.** Ran
+   `"/volume1/@appstore/PlexMediaServer/Plex Transcoder" -hwaccels` over SSH — the only
+   hwaccel method compiled into this build is `cuda` (Nvidia). No VAAPI/QSV support at all
+   (build flags include `--disable-hwaccels`, with `cuda` as the sole exception). This box
+   has no Nvidia GPU. On top of that, `/dev/dri` doesn't exist on the system — no render
+   device node, so even a VAAPI-capable binary would have nothing to talk to. The
+   "Use hardware acceleration" / "Use hardware-accelerated video encoding" checkboxes and
+   the "Auto" device picker in Settings → Transcoder are cosmetic no-ops on this hardware —
+   checking them changes nothing. Software transcoding on a 1.6GHz dual-core Atom with
+   ~700 MB RAM is impractical for real-time playback.
+   Practical takeaway: keep the library **Direct Play-friendly** — H.264/AAC in MP4 or MKV.
+   Avoid HEVC/H.265, high-bitrate 4K, and audio codecs that force a remux/transcode (DTS,
+   TrueHD). Confirmed against the current Apple TV client (Apple TV, 4th gen, model A1625,
+   tvOS 26.6, Plex app 2026.18.0), which only outputs 1080p anyway, so there's no upside to
+   sourcing anything above that.
 4. **Remote access to Plex** — never decided. Off for now (LAN-only), revisit if wanted.
 5. Optional, low-priority: RSS auto-download in Download Station; PIA port-forwarding for
    faster BT speeds (would need a small script against PIA's port-forward API, since DSM's
